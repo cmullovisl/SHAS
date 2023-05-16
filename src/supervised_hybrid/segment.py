@@ -147,6 +147,89 @@ def pdac(
     return segments
 
 
+def pstrm(
+    probs: np.array,
+    max_segment_length: float,
+    min_segment_length: float,
+    threshold: float,
+    not_strict: bool
+) -> list[Segment]:
+    """applies the probabilistic "Streaming" segmentation algorithm to split an audio
+    into segments satisfying the max-segment-length and min-segment-length conditions
+
+    Args:
+        probs (np.array): the binary frame-level probabilities
+            output by the segmentation-frame-classifier
+        max_segment_length (float): the maximum length of a segment
+        min_segment_length (float): the minimum length of a segment
+        threshold (float): probability threshold
+        not_strict (bool): whether segments longer than max are allowed
+
+    Returns:
+        list[Segment]: resulting segmentation
+    """
+
+    segments = []
+    sgm = Segment(0, len(probs), probs)
+    sgm = trim(sgm, threshold)
+
+    total_duration_frames = len(probs)
+    start = 0
+    leftover = Segment(0, 0, np.empty(0))
+
+    def _concat(seg_a: Segment, seg_b: Segment) -> Segment:
+        probs_a = sgm_a.probs
+        probs_b = sgm_b.probs
+        sgm = Segment(probs_a.start, probs_b.end, np.concat([probs_a, probs_b], 0))
+        return sgm
+
+    def _split(sgm: Segment, split_idx: int) -> tuple[Segment, Segment]:
+        probs_a = sgm.probs[:split_idx]
+        sgm_a = Segment(sgm.start, sgm.start + len(probs_a), probs_a)
+        probs_b = sgm.probs[split_idx + 1 :]
+        sgm_b = Segment(sgm_a.end + 1, sgm.end, probs_b)
+        return sgm_a, sgm_b
+
+    while start < total_duration_frames:
+
+        end = min(start + max_segment_length - len(leftover.probs), total_duration_frames)
+        #current_prob = leftover + probs[start:end]
+        current_sgm = _concat(leftover, _split(_split(sgm, end), start))
+
+        #first_part = current_prob[:min_segm_len]
+        #second_part = current_prob[min_segm_len:]
+        first_part, second_part = _split(current_sgm, min_segment_length)
+
+        #sorted_indices = np.argsort(sgm.probs)
+        sorted_indices = np.argsort(second_part.probs)
+        split_idx = sorted_indices[-1] if len(sorted_indices) else -1
+        #max_prob = sgm.probs[split_idx]
+        max_prob = second_part.probs[split_idx]
+
+        #if max_prob > threshold and not_strict:
+        if max_prob > threshold:
+            #first_part_b, leftover = second_part.split(max_pause, maxsplit=1)
+            #first_part_b, leftover = split_and_trim(sgm, split_idx, threshold)
+            first_part_b, leftover = split_and_trim(second_part, split_idx, threshold)
+            if all(x < threshold for x in first_part.probs):
+                #segments.append(first_part)
+                # trim?
+                if len(first_part_b):
+                    segments.append(first_part_b)
+            else:
+                segments.append(_concat(first_part, first_part_b))
+                #segments.append(first_part + first_part_b)
+            #segments.append(max_pause)
+
+        else:
+            segments.append(current_prob)
+            leftover = Segment(0, 0, np.empty(0))
+
+        start = end
+
+    return segments
+
+
 def update_yaml_content(
     yaml_content: list[dict], segments: list[Segment], wav_name: str
 ) -> list[dict]:
