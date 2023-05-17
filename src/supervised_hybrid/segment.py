@@ -177,53 +177,55 @@ def pstrm(
     start = 0
     leftover = Segment(0, 0, np.empty(0))
 
-    def _concat(seg_a: Segment, seg_b: Segment) -> Segment:
+    min_segm_len = int(TARGET_SAMPLE_RATE * min_segment_length)
+    max_segm_len = int(TARGET_SAMPLE_RATE * max_segment_length)
+
+    def _concat(sgm_a: Segment, sgm_b: Segment) -> Segment:
         probs_a = sgm_a.probs
         probs_b = sgm_b.probs
-        sgm = Segment(probs_a.start, probs_b.end, np.concat([probs_a, probs_b], 0))
+        sgm = Segment(sgm_a.start, sgm_b.end, np.concatenate([probs_a, probs_b], 0))
         return sgm
 
     def _split(sgm: Segment, split_idx: int) -> tuple[Segment, Segment]:
         probs_a = sgm.probs[:split_idx]
         sgm_a = Segment(sgm.start, sgm.start + len(probs_a), probs_a)
-        probs_b = sgm.probs[split_idx + 1 :]
+        probs_b = sgm.probs[split_idx + 1:]
         sgm_b = Segment(sgm_a.end + 1, sgm.end, probs_b)
         return sgm_a, sgm_b
 
     while start < total_duration_frames:
 
-        end = min(start + max_segment_length - len(leftover.probs), total_duration_frames)
-        #current_prob = leftover + probs[start:end]
-        current_sgm = _concat(leftover, _split(_split(sgm, end), start))
+        # end = min(start + max_segm_len - len(leftover.probs), total_duration_frames)
+        end = min(start + max_segm_len - len(leftover.probs), total_duration_frames)
+        # current_sgm = _concat(leftover, _split(_split(sgm, end)[0], start)[1])
+        end_sgm, _ = _split(sgm, end)
+        _, mid_sgm = _split(end_sgm, start)
+        current_sgm = _concat(leftover, _split(_split(sgm, end)[0], start)[1])
+        # print(start, end, current_sgm.duration, flush=True)
 
-        #first_part = current_prob[:min_segm_len]
-        #second_part = current_prob[min_segm_len:]
-        first_part, second_part = _split(current_sgm, min_segment_length)
+        first_part, second_part = _split(current_sgm, min_segm_len)
+        # print(current_sgm.duration, second_part.duration)
 
-        #sorted_indices = np.argsort(sgm.probs)
-        sorted_indices = np.argsort(second_part.probs)
-        split_idx = sorted_indices[-1] if len(sorted_indices) else -1
-        #max_prob = sgm.probs[split_idx]
-        max_prob = second_part.probs[split_idx]
+        if len(second_part.probs):
+            sorted_indices = np.argsort(second_part.probs)
+            split_idx = sorted_indices[-1]
+            max_prob = second_part.probs[split_idx]
+        else:
+            max_prob = 0.0
 
-        #if max_prob > threshold and not_strict:
+        # if max_prob > threshold and not_strict:
         if max_prob > threshold:
-            #first_part_b, leftover = second_part.split(max_pause, maxsplit=1)
-            #first_part_b, leftover = split_and_trim(sgm, split_idx, threshold)
             first_part_b, leftover = split_and_trim(second_part, split_idx, threshold)
             if all(x < threshold for x in first_part.probs):
-                #segments.append(first_part)
                 # trim?
-                if len(first_part_b):
+                if len(first_part_b.probs):
                     segments.append(first_part_b)
             else:
                 segments.append(_concat(first_part, first_part_b))
-                #segments.append(first_part + first_part_b)
-            #segments.append(max_pause)
 
         else:
-            segments.append(current_prob)
-            leftover = Segment(0, 0, np.empty(0))
+            segments.append(current_sgm)
+            leftover = Segment(current_sgm.end, current_sgm.end, np.empty(0))
 
         start = end
 
@@ -317,7 +319,8 @@ def segment(args):
 
         sgm_frame_probs /= args.inference_times
 
-        segments = pdac(
+        segmentation_method = pstrm if args.segmentation_method == 'pstrm' else pdac
+        segments = segmentation_method(
             sgm_frame_probs,
             args.dac_max_segment_length,
             args.dac_min_segment_length,
@@ -414,6 +417,13 @@ if __name__ == "__main__":
         help="whether segments longer than max are allowed."
         "If this argument is used, respecting the classification threshold conditions (p > thr)"
         "is more important than the length conditions (len < max)."
+    )
+    parser.add_argument(
+        "--segmentation_method",
+        type=str,
+        default='pdac',
+        choices=['pdac', 'pstrm'],
+        help="Segmentation method to be used."
     )
     args = parser.parse_args()
 
