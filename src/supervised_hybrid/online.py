@@ -11,6 +11,30 @@ from models import SegmentationFrameClassifer, prepare_wav2vec
 from segment import Segment, split_and_trim #, trim
 
 
+def concat(sgm_a: Segment, sgm_b: Segment) -> Segment:
+    probs_a = sgm_a.probs
+    probs_b = sgm_b.probs
+    filler = np.ones(sgm_b.start - sgm_a.end)
+    # sgm = Segment(sgm_a.start, sgm_b.end, np.concatenate([probs_a, probs_b], 0))
+    sgm = Segment(sgm_a.start, sgm_b.end, np.concatenate([probs_a, filler, probs_b], 0))
+
+    assert sgm.end - sgm.start == len(sgm.probs)
+
+    return sgm
+
+
+def split(sgm: Segment, split_idx: int) -> tuple[Segment, Segment]:
+    probs_a = sgm.probs[:split_idx]
+    sgm_a = Segment(sgm.start, sgm.start + len(probs_a), probs_a)
+    probs_b = sgm.probs[split_idx + 1:]
+    sgm_b = Segment(sgm_a.end + 1, sgm.end, probs_b)
+
+    assert (sgm_a.end - sgm_a.start == len(sgm_a.probs)
+            and sgm_b.end - sgm_b.start == len(sgm_b.probs))
+
+    return sgm_a, sgm_b
+
+
 class OnlineSegmenter:
 
     def __init__(self, args):
@@ -41,7 +65,9 @@ class OnlineSegmenter:
 
         self.threshold = args.dac_threshold
         self.start = 0
+        self.end = 0
         self.leftover = Segment(self.start, self.start, np.empty(0))
+        self.probs = Segment(self.start, self.start, np.empty(0))
 
         self.min_segm_len = int(TARGET_SAMPLE_RATE * args.dac_min_segment_length)
         self.max_segm_len = int(TARGET_SAMPLE_RATE * args.dac_max_segment_length)
@@ -132,25 +158,18 @@ class OnlineSegmenter:
             Segment: resulting segmentation
         """
 
-        def _concat(sgm_a: Segment, sgm_b: Segment) -> Segment:
-            probs_a = sgm_a.probs
-            probs_b = sgm_b.probs
-            sgm = Segment(sgm_a.start, sgm_b.end, np.concatenate([probs_a, probs_b], 0))
-            return sgm
 
-        def _split(sgm: Segment, split_idx: int) -> tuple[Segment, Segment]:
-            probs_a = sgm.probs[:split_idx]
-            sgm_a = Segment(sgm.start, sgm.start + len(probs_a), probs_a)
-            probs_b = sgm.probs[split_idx + 1:]
-            sgm_b = Segment(sgm_a.end + 1, sgm.end, probs_b)
-            return sgm_a, sgm_b
+#        if not len(self.leftover.probs):
+#            #self.leftover = Segment(self.start, self.start, np.empty(0))
+#            self.leftover = Segment(new_sgm.start, new_sgm.start, np.empty(0))
+#        end = new_sgm.end
+#        current_sgm = concat(self.leftover, new_sgm)
+        if len(self.leftover.probs):
+            current_sgm = concat(self.leftover, new_sgm)
+        else:
+            current_sgm = new_sgm
 
-        if not len(self.leftover.probs):
-            self.leftover = Segment(self.start, self.start, np.empty(0))
-        end = new_sgm.end
-        current_sgm = _concat(self.leftover, new_sgm)
-
-        first_part, second_part = _split(current_sgm, self.min_segm_len)
+        first_part, second_part = split(current_sgm, self.min_segm_len)
 
         if len(second_part.probs):
             sorted_indices = np.argsort(second_part.probs)
@@ -159,7 +178,7 @@ class OnlineSegmenter:
         else:
             min_prob = 1.0
 
-        self.start = end
+#        self.start = end
 
         # if min_prob < self.threshold and not_strict:
         if min_prob < self.threshold:
@@ -169,7 +188,7 @@ class OnlineSegmenter:
                 if len(first_part_b.probs):
                     return first_part_b
             else:
-                return _concat(first_part, first_part_b)
+                return concat(first_part, first_part_b)
 
         else:
             self.leftover = Segment(current_sgm.end, current_sgm.end, np.empty(0))
@@ -185,29 +204,32 @@ class OnlineSegmenter:
         for inference_iteration in range(self.args.inference_times):
             # create a dataloader for this fixed-length segmentation of the wav file
             dataset.fixed_length_segmentation(inference_iteration)
-        # yield (s for s in self.process_audio(dataset))
-        for s in self.process_audio(dataset):
-            yield s
-
-    def process_audio(self, dataset):
-        all_probs = np.empty(0)
 
         for x in dataset:
-            # get frame segmentation frame probabilities in the output space
-            probs, = self.infer(
-                self.wav2vec_model,
-                self.sfc_model,
-                [segm_collate_fn([x])],
-                dataset.duration_outframes,
-                self.device,
-            )
-            all_probs = np.concatenate((all_probs, probs.squeeze()), 0)
+            for s in self.process_audio(x, dataset.duration_outframes):
+                yield s
 
-            while (end := self.leftover.start + self.max_segm_len) < len(all_probs):
-                new_sgm = Segment(self.start, end, all_probs[self.start:end])
-                out_sgm = self.pstrm(new_sgm)
-                if out_sgm is not None:
-                    yield out_sgm
+    def process_audio(self, audio, duration_outframes):
+        # get frame segmentation frame probabilities in the output space
+        probs, = self.infer(
+            self.wav2vec_model,
+            self.sfc_model,
+            [segm_collate_fn([audio])],
+            duration_outframes,
+            self.device,
+        )
+        probs = probs.squeeze()
+        all_probs = np.concatenate((self.probs.probs, probs), 0)
+        self.probs = Segment(self.probs.start, self.probs.end + len(probs), all_probs)
+        assert (self.probs.end - self.probs.start) == len(self.probs.probs)
+
+        while self.leftover.start + self.max_segm_len < self.probs.end:
+            # this maked the above assertion fail (due to trimming?)
+            # new_sgm, self.probs = split(self.probs, self.max_segm_len - len(self.leftover.probs))
+            new_sgm, self.probs = split(self.probs, self.leftover.start + self.max_segm_len - self.probs.start)
+            out_sgm = self.pstrm(new_sgm)
+            if out_sgm is not None:
+                yield out_sgm
 
 
 if __name__ == "__main__":
@@ -288,5 +310,6 @@ if __name__ == "__main__":
         print(wav_path)
         for sgm in segmenter.segment(wav_path):
             # yaml_content = update_yaml_content(yaml_content, sgm, wav_path.name)
-            print(f'{sgm.start / TARGET_SAMPLE_RATE:.2f} {sgm.end / TARGET_SAMPLE_RATE:.2f}')
-            #print(f'{sgm.duration:.4f} {sgm.start / TARGET_SAMPLE_RATE:.4f}')
+            #print(f'{sgm.start / TARGET_SAMPLE_RATE:.2f} {sgm.end / TARGET_SAMPLE_RATE:.2f}')
+            #print(f'{sgm.start} {sgm.end}')
+            print(f'{sgm.duration:.4f} {sgm.start / TARGET_SAMPLE_RATE:.4f}')
