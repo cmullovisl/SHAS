@@ -23,7 +23,7 @@ elif [[ $st_model_basename == "joint-s2t-multilingual" ]]; then
 fi
 
 # Prepare the tsv file from the custom segmentation yaml
-python ${SHAS_ROOT}/src/eval_scripts/prepare_custom_dataset.py \
+python ${SHAS_ROOT}/SHAS/eval_scripts/prepare_custom_dataset.py \
     -y $path_to_custom_segmentation_yaml \
     -w $path_to_wavs \
     -l $tgt_lang \
@@ -60,10 +60,10 @@ elif [[ $st_model_basename == "joint-s2t-multilingual" ]]; then
 fi
 
 # Extract raw hypotheses from fairseq-generate output
-python ${SHAS_ROOT}/src/eval_scripts/format_generation_output.py \
+python ${SHAS_ROOT}/SHAS/eval_scripts/format_generation_output.py \
     -p ${working_dir}/translations.txt
 
-python ${SHAS_ROOT}/src/eval_scripts/original_segmentation_to_xml.py \
+python ${SHAS_ROOT}/SHAS/eval_scripts/original_segmentation_to_xml.py \
     -y $path_to_original_segmentation_yaml \
     -s $path_to_original_segment_transcriptions \
     -t $path_to_original_segment_translations \
@@ -89,4 +89,4 @@ eval "$(conda shell.bash hook)"
 conda activate shas
 
 # Obtain the BLEU score of the aligned hypotheses and references
-python ${SHAS_ROOT}/src/eval_scripts/score_translation.py $working_dir
+python ${SHAS_ROOT}/SHAS/eval_scripts/score_translation.py $working_dir
