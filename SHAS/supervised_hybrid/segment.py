@@ -9,10 +9,10 @@ import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from constants import HIDDEN_SIZE, TARGET_SAMPLE_RATE
-from data import FixedSegmentationDatasetNoTarget, segm_collate_fn
-from eval import infer
-from models import SegmentationFrameClassifer, prepare_wav2vec
+from SHAS.supervised_hybrid.constants import HIDDEN_SIZE, TARGET_SAMPLE_RATE
+from SHAS.supervised_hybrid.data import FixedSegmentationDatasetNoTarget, segm_collate_fn
+from SHAS.supervised_hybrid.eval import infer
+from SHAS.supervised_hybrid.models import SegmentationFrameClassifer, prepare_wav2vec
 
 
 @dataclass
@@ -255,8 +255,7 @@ def segment(args):
     )
 
 
-if __name__ == "__main__":
-
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--path_to_segmentation_yaml",
@@ -335,3 +334,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     segment(args)
+
+if __name__ == "__main__":
+    main()

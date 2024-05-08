@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 import torchaudio
-from constants import INPUT_SAMPLE_RATE, TARGET_SAMPLE_RATE
+from SHAS.supervised_hybrid.constants import INPUT_SAMPLE_RATE, TARGET_SAMPLE_RATE
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 

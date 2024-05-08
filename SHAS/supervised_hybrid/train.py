@@ -10,10 +10,10 @@ import wandb
 from sklearn.metrics import f1_score
 from torch.optim import AdamW, lr_scheduler
 
-from constants import HIDDEN_SIZE
-from data import FixedDataloaderGenerator, RandomDataloaderGenerator
-from eval import eval
-from models import SegmentationFrameClassifer, prepare_wav2vec
+from SHAS.supervised_hybrid.constants import HIDDEN_SIZE
+from SHAS.supervised_hybrid.data import FixedDataloaderGenerator, RandomDataloaderGenerator
+from SHAS.supervised_hybrid.eval import eval
+from SHAS.supervised_hybrid.models import SegmentationFrameClassifer, prepare_wav2vec
 
 warnings.filterwarnings("ignore")
 
@@ -244,8 +244,7 @@ def train(args):
         run.finish()
 
 
-if __name__ == "__main__":
-
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--datasets",
@@ -363,3 +362,7 @@ if __name__ == "__main__":
     ), "Number of datasets does not match"
 
     train(args)
+
+
+if __name__ == "__main__":
+    main()
