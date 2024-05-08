@@ -64,7 +64,7 @@ ls ${path_to_wavs}/*.* | parallel -j 4 ffmpeg -i {} -ac 1 -ar 16000 -hide_banner
 Segment a collection of audio files with the SHAS method. This includes inference with the classifier and application of a probabilistic Divide-and-Conquer (pDAC) algorithm:
 
 ```bash
-python ${SHAS_ROOT}/src/supervised_hybrid/segment.py \
+python ${SHAS_ROOT}/SHAS/supervised_hybrid/segment.py \
   -wavs $path_to_wavs \                       # path to the audio files that will be segmented
   -ckpt $path_to_checkpoint \                 # path to the checkpoint of a trained segmentation frame classifier
   -yaml $path_to_custom_segmentation_yaml \   # where to save the custom segmentation yaml file
@@ -76,7 +76,7 @@ python ${SHAS_ROOT}/src/supervised_hybrid/segment.py \
 Length-based (fixed-length) segmentation:
 
 ```bash
-python ${SHAS_ROOT}/src/segmentation_methods/length_based.py \
+python ${SHAS_ROOT}/SHAS/segmentation_methods/length_based.py \
   -wavs $path_to_wavs \
   -yaml $path_to_custom_segmentation_yaml \
   -n $segment_length    # (in seconds)
@@ -85,7 +85,7 @@ python ${SHAS_ROOT}/src/segmentation_methods/length_based.py \
 Pause-based segmentation with webrtc VAD:
 
 ```bash
-python ${SHAS_ROOT}/src/segmentation_methods/pause_based.py \
+python ${SHAS_ROOT}/SHAS/segmentation_methods/pause_based.py \
   -wavs $path_to_wavs \
   -yaml $path_to_custom_segmentation_yaml \
   -l $frame_length \        # 10, 20 or 30
@@ -95,7 +95,7 @@ python ${SHAS_ROOT}/src/segmentation_methods/pause_based.py \
 Hybrid segmentation with either wav2vec 2.0 or VAD as pause predictor, and either the DAC or Streaming algorithms:
 
 ```bash
-python ${SHAS_ROOT}/src/segmentation_methods/hybrid.py \
+python ${SHAS_ROOT}/SHAS/segmentation_methods/hybrid.py \
   -wavs $path_to_wavs \
   -yaml $path_to_custom_segmentation_yaml \
   -pause $pause_predictor \         # wav2vec or vad
@@ -190,7 +190,7 @@ We create two tsv files (talks, segments) for each triplet of dataset-lang_pair-
 # MuST-C en-de
 mkdir -p ${SEGM_DATASETS_ROOT}/MUSTC/en-de
 for split in {train,dev,tst-COMMON}; do
-  python ${SHAS_ROOT}/src/data_prep/prepare_dataset_for_segmentation.py \
+  python ${SHAS_ROOT}/SHAS/data_prep/prepare_dataset_for_segmentation.py \
     -y ${MUSTC_ROOT}/en-de/data/${split}/txt/${split}.yaml \
     -w ${MUSTC_ROOT}/en-de/data/${split}/wav \
     -o ${SEGM_DATASETS_ROOT}/MUSTC/en-de
@@ -199,7 +199,7 @@ done
 for lang_pair in {es-en,fr-en,pt-en,it-en,es-es,fr-fr,pt-pt,it-it}; do
   mkdir -p ${SEGM_DATASETS_ROOT}/mTEDx/${lang_pair}
   for split in {train,valid,test}; do
-    python ${SHAS_ROOT}/src/data_prep/prepare_dataset_for_segmentation.py \
+    python ${SHAS_ROOT}/SHAS/data_prep/prepare_dataset_for_segmentation.py \
       -y ${MTEDX_ROOT}/${lang_pair}/data/${split}/txt/${split}.yaml \
       -w ${MTEDX_ROOT}/${lang_pair}/data/${split}/wav \
       -o ${SEGM_DATASETS_ROOT}/mTEDx/${lang_pair}
@@ -230,9 +230,9 @@ To generate translation with the ST models, we have to modify the path of the `s
 
 ```bash
 sed -i "s+/path/spm.model+${en_de_model_path}/spm.model+" ${en_de_model_path}/config.yaml
-python ${SHAS_ROOT}/src/data_prep/fix_joint_s2t_cfg.py -c ${en_de_model_path}/checkpoint_ave_10.pt
+python ${SHAS_ROOT}/SHAS/data_prep/fix_joint_s2t_cfg.py -c ${en_de_model_path}/checkpoint_ave_10.pt
 sed -i "s+/path/spm.model+${mult_model_path}/spm.model+" ${mult_model_path}/config.yaml
-python ${SHAS_ROOT}/src/data_prep/fix_joint_s2t_cfg.py -c ${mult_model_path}/checkpoint17.pt
+python ${SHAS_ROOT}/SHAS/data_prep/fix_joint_s2t_cfg.py -c ${mult_model_path}/checkpoint17.pt
 ```
 
 ### Train a Segmentation Frame Classifier (SFC) model
@@ -241,7 +241,7 @@ For a monolingual model (for example on English speech):
 
 ```bash
 experiment_name=en_sfc_model
-python ${SHAS_ROOT}/src/supervised_hybrid/train.py \
+python ${SHAS_ROOT}/SHAS/supervised_hybrid/train.py \
     --datasets ${SEGM_DATASETS_ROOT}/MUSTC/en-de \
     --results_path ${RESULTS_ROOT}/supervised_hybrid \
     --model_name facebook/wav2vec2-xls-r-300m \
@@ -260,7 +260,7 @@ For a multilingual model trained on (English, Spanish, French, Italian, Portugue
 
 ```bash
 experiment_name=mult_sfc_model
-python ${SHAS_ROOT}/src/supervised_hybrid/train.py \
+python ${SHAS_ROOT}/SHAS/supervised_hybrid/train.py \
     --datasets ${SEGM_DATASETS_ROOT}/MUSTC/en-de,${SEGM_DATASETS_ROOT}/mTEDx/es-es,${SEGM_DATASETS_ROOT}/mTEDx/fr-fr,${SEGM_DATASETS_ROOT}/mTEDx/it-it,${SEGM_DATASETS_ROOT}/mTEDx/pt-pt \
     --results_path ${RESULTS_ROOT}/supervised_hybrid \
     --model_name facebook/wav2vec2-xls-r-300m \
@@ -282,7 +282,7 @@ python ${SHAS_ROOT}/src/supervised_hybrid/train.py \
 Segment a collection of audio files, by doing inference with a trained Segmentation Frame Classifier and applying a probabilistic Divide-and-Conquer (pDAC) algorithm:
 
 ```bash
-python ${SHAS_ROOT}/src/supervised_hybrid/segment.py \
+python ${SHAS_ROOT}/SHAS/supervised_hybrid/segment.py \
   -wavs $path_to_wavs \                       # path to the audio files that will be segmented
   -ckpt $path_to_checkpoint \                 # path to the checkpoint of a trained segmentation frame classifier
   -yaml $path_to_custom_segmentation_yaml \   # where to save the custom segmentation yaml file
@@ -298,7 +298,7 @@ The `eval_custom_segmentation.sh` performs the following tasks:
 * (3): computes scores with sacreBLEU;
 
 ```bash
-bash ${SHAS_ROOT}/src/eval_scripts/eval_custom_segmentation.sh \
+bash ${SHAS_ROOT}/SHAS/eval_scripts/eval_custom_segmentation.sh \
   $path_to_wavs \                               # path to the audio files that will be segmented
   $path_to_custom_segmentation_yaml \           # path to the custom segmentation yaml from segment.py
   $path_to_original_segmentation_yaml \         # path to the original segmentation yaml
